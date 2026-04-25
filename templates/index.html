@@ -1,0 +1,534 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>URP 抢课助手</title>
+<link href="https://fonts.googleapis.com/css2?family=Syne:wght@400;600;700;800&family=JetBrains+Mono:wght@400;500;600&display=swap" rel="stylesheet">
+<style>
+:root{
+  --bg:#080808;--surf:#101010;--surf2:#161616;
+  --b1:#1e1e1e;--b2:#2a2a2a;
+  --tx:#e2e2e2;--mu:#505050;
+  --ac:#f97316;--gn:#22c55e;--rd:#ef4444;--yw:#eab308;--bl:#60a5fa;
+  --sans:'Syne',sans-serif;--mono:'JetBrains Mono',monospace;
+}
+*,*::before,*::after{box-sizing:border-box;margin:0;padding:0}
+html,body{height:100%}
+body{background:var(--bg);color:var(--tx);font-family:var(--sans);
+     display:grid;grid-template-rows:56px 1fr;overflow:hidden}
+
+/* ── 顶栏 ── */
+header{background:var(--surf);border-bottom:1px solid var(--b1);
+  padding:0 28px;display:flex;align-items:center;justify-content:space-between}
+.logo{font-size:16px;font-weight:800;letter-spacing:.1em;text-transform:uppercase}
+.logo em{color:var(--ac);font-style:normal}
+.indicator{display:flex;align-items:center;gap:8px;
+  font-family:var(--mono);font-size:12px;color:var(--mu)}
+.dot{width:8px;height:8px;border-radius:50%;background:var(--mu);transition:all .3s}
+.dot.active {background:var(--ac);box-shadow:0 0 8px var(--ac);animation:blink 1.4s infinite}
+.dot.waiting{background:var(--yw);box-shadow:0 0 8px var(--yw);animation:blink 2s infinite}
+.dot.success{background:var(--gn);box-shadow:0 0 8px var(--gn)}
+.dot.failed {background:var(--rd);box-shadow:0 0 8px var(--rd)}
+@keyframes blink{0%,100%{opacity:1}50%{opacity:.3}}
+
+/* ── 主布局：左侧固定 460px ── */
+main{display:grid;grid-template-columns:460px 1fr;overflow:hidden}
+
+/* ── 左侧配置面板 ── */
+aside{background:var(--surf);border-right:1px solid var(--b1);
+  overflow-y:auto;padding:22px;display:flex;flex-direction:column;gap:22px}
+aside::-webkit-scrollbar{width:3px}
+aside::-webkit-scrollbar-thumb{background:var(--b2);border-radius:2px}
+
+.sec-label{font-size:13px;font-weight:700;letter-spacing:.12em;
+  text-transform:uppercase;color:var(--mu);margin-bottom:12px}
+
+.field{display:flex;flex-direction:column;gap:6px}
+.field label{font-size:13px;font-family:var(--mono);color:var(--mu)}
+
+input[type=text],input[type=password],input[type=datetime-local]{
+  background:var(--bg);border:1px solid var(--b2);border-radius:6px;
+  padding:10px 13px;color:var(--tx);font-family:var(--mono);font-size:14px;
+  outline:none;transition:border-color .2s;width:100%}
+input:focus{border-color:var(--ac)}
+input::placeholder{color:var(--mu)}
+
+/* ── 课程卡片 ── */
+#course-list{display:flex;flex-direction:column;gap:10px}
+
+.course-card{
+  border:1px solid var(--b2);border-radius:8px;padding:14px;
+  transition:border-color .3s,background .3s;
+  animation:fadeUp .2s ease}
+@keyframes fadeUp{from{opacity:0;transform:translateY(-5px)}to{opacity:1;transform:none}}
+
+/* 状态颜色 — 只改边框和背景，输入框始终可见 */
+.course-card.sniping{background:rgba(96,165,250,.05);border-color:rgba(96,165,250,.35)}
+.course-card.success{background:rgba(34,197,94,.07); border-color:rgba(34,197,94,.45)}
+.course-card.failed {background:rgba(239,68,68,.06); border-color:rgba(239,68,68,.35)}
+
+.card-hdr{display:flex;justify-content:space-between;align-items:center;margin-bottom:11px}
+.card-num{font-family:var(--mono);font-size:13px;font-weight:600;
+  color:var(--ac);letter-spacing:.06em;transition:color .3s}
+.course-card.sniping .card-num{color:var(--bl)}
+.course-card.success .card-num{color:var(--gn)}
+.course-card.failed  .card-num{color:var(--rd)}
+
+.btn-del{background:none;border:none;color:var(--mu);cursor:pointer;
+  font-size:16px;line-height:1;transition:color .15s;padding:2px 5px}
+.btn-del:hover{color:var(--rd)}
+
+.card-fields{display:grid;grid-template-columns:1fr 1fr;gap:9px}
+.card-fields .field label{font-size:13px}
+.card-fields input{font-size:13.5px;padding:10px 13px}
+
+/* 成功时输入框边框变绿 */
+.course-card.success .card-fields input{border-color:rgba(34,197,94,.3);color:var(--gn)}
+.course-card.sniping .card-fields input{border-color:rgba(96,165,250,.25)}
+
+/* ── 按钮 ── */
+.btn{width:100%;padding:12px;border:none;border-radius:7px;
+  font-family:var(--sans);font-size:14px;font-weight:700;
+  letter-spacing:.06em;text-transform:uppercase;cursor:pointer;transition:all .18s}
+.btn-add{background:transparent;border:1px dashed var(--b2);color:var(--mu)}
+.btn-add:hover{border-color:var(--ac);color:var(--ac)}
+.btn-start{background:var(--ac);color:#000}
+.btn-start:hover:not(:disabled){background:#fb923c;transform:translateY(-1px);
+  box-shadow:0 4px 18px rgba(249,115,22,.35)}
+.btn-start:disabled{opacity:.4;cursor:not-allowed}
+.btn-stop{background:transparent;border:1px solid var(--rd);color:var(--rd)}
+.btn-stop:hover{background:var(--rd);color:#fff}
+.btn-actions{display:flex;flex-direction:column;gap:8px}
+
+/* ── 右侧日志区 ── */
+section{display:grid;grid-template-rows:44px 1fr auto auto;overflow:hidden}
+
+.log-hdr{padding:0 20px;border-bottom:1px solid var(--b1);
+  display:flex;align-items:center;justify-content:space-between}
+.log-title{font-size:11px;font-weight:700;letter-spacing:.15em;
+  text-transform:uppercase;color:var(--mu)}
+.btn-clr{background:none;border:none;color:var(--mu);
+  font-size:10px;font-family:var(--mono);cursor:pointer;transition:color .15s}
+.btn-clr:hover{color:var(--tx)}
+
+#log-box{overflow-y:auto;padding:12px 20px;
+  font-family:var(--mono);font-size:12px;line-height:1.8}
+#log-box::-webkit-scrollbar{width:3px}
+#log-box::-webkit-scrollbar-thumb{background:var(--b2);border-radius:2px}
+
+.ll{display:flex;gap:10px;animation:fadeIn .12s ease}
+@keyframes fadeIn{from{opacity:0}to{opacity:1}}
+.lt{color:var(--mu);flex-shrink:0;user-select:none}
+.lv{flex-shrink:0;width:36px}
+.lv.info   {color:var(--bl)}
+.lv.warning{color:var(--yw)}
+.lv.error  {color:var(--rd)}
+.lm{color:var(--tx);word-break:break-all}
+
+/* ── 验证码条 ── */
+#cap-bar{display:none;padding:8px 20px;border-top:1px solid var(--b1);
+  align-items:center;gap:12px;background:var(--surf2);
+  font-family:var(--mono);font-size:12px;color:var(--mu)}
+#cap-img{height:32px;border-radius:4px;border:1px solid var(--b2)}
+
+/* ── 状态栏 ── */
+#status-bar{padding:10px 20px;border-top:1px solid var(--b1);
+  display:flex;align-items:center;gap:9px;
+  font-family:var(--mono);font-size:13px;
+  min-height:42px;transition:background .35s}
+#status-bar.waiting{color:var(--yw)}
+#status-bar.sniping{background:rgba(249,115,22,.06);color:var(--ac)}
+#status-bar.success{background:rgba(34,197,94,.07); color:var(--gn)}
+#status-bar.failed {background:rgba(239,68,68,.07);  color:var(--rd)}
+#status-msg{flex:1}
+
+/* ── 弹窗 ── */
+#overlay{display:none;position:fixed;inset:0;background:rgba(0,0,0,.72);
+  backdrop-filter:blur(5px);z-index:200;align-items:center;justify-content:center}
+#overlay.show{display:flex}
+#modal{background:var(--surf);border:1px solid var(--b2);border-radius:12px;
+  padding:26px;width:620px;max-width:92vw;max-height:80vh;overflow-y:auto;
+  animation:modalIn .22s ease}
+@keyframes modalIn{from{opacity:0;transform:scale(.96) translateY(8px)}to{opacity:1;transform:none}}
+.modal-title{font-size:15px;font-weight:700;margin-bottom:5px}
+.modal-hint{font-size:12px;color:var(--mu);font-family:var(--mono);margin-bottom:18px}
+.tbl{width:100%;border-collapse:collapse;font-family:var(--mono);font-size:12px}
+.tbl th{color:var(--mu);text-align:left;padding:6px 9px;border-bottom:1px solid var(--b2);font-weight:500}
+.tbl td{padding:9px;border-bottom:1px solid var(--b1)}
+.tbl .tr{cursor:pointer;transition:background .12s}
+.tbl .tr:hover{background:rgba(249,115,22,.07)}
+.tbl .tr.sel{background:rgba(249,115,22,.14)}
+.tbl .tr td:first-child{color:var(--ac);font-weight:600}
+.modal-btns{display:flex;gap:9px;margin-top:18px}
+.btn-confirm{flex:1;background:var(--ac);color:#000;padding:10px;border:none;
+  border-radius:7px;font-family:var(--sans);font-size:13px;font-weight:700;
+  text-transform:uppercase;letter-spacing:.06em;cursor:pointer;transition:all .18s}
+.btn-confirm:hover:not(:disabled){background:#fb923c}
+.btn-confirm:disabled{opacity:.4;cursor:not-allowed}
+.btn-skip{background:transparent;border:1px solid var(--b2);color:var(--mu);
+  padding:10px 18px;border-radius:7px;font-family:var(--sans);font-size:13px;
+  font-weight:600;cursor:pointer;transition:all .18s}
+.btn-skip:hover{border-color:var(--tx);color:var(--tx)}
+
+/* ── 登录方式切换 ── */
+.login-mode{display:flex;gap:0;border:1px solid var(--b2);border-radius:7px;overflow:hidden}
+.login-mode input[type=radio]{display:none}
+.login-mode label{
+  flex:1;padding:9px 0;text-align:center;cursor:pointer;
+  font-family:var(--mono);font-size:13px;color:var(--mu);
+  transition:all .18s;user-select:none
+}
+.login-mode input[type=radio]:checked+label{
+  background:var(--ac);color:#000;font-weight:600
+}
+.login-mode label:hover:not(.checked){color:var(--tx)}
+
+</style>
+</head>
+<body>
+
+<header>
+  <div class="logo">URP <em>Course</em> Sniper</div>
+  <div class="indicator">
+    <div class="dot" id="dot"></div>
+    <span id="hdr-status">待机</span>
+  </div>
+</header>
+
+<main>
+  <!-- 左：配置 -->
+  <aside>
+
+    <div>
+      <div class="sec-label">账号</div>
+      <div style="display:flex;flex-direction:column;gap:10px">
+        <div class="field"><label>学号</label><input type="text" id="username" placeholder="A09xxxxxx"></div>
+        <div class="field"><label>密码</label><input type="password" id="password" placeholder="••••••••"></div>
+        <div class="field">
+          <label>登录方式</label>
+          <div class="login-mode">
+            <input type="radio" name="login-mode" id="mode-direct" value="direct" checked>
+            <label for="mode-direct">🏫 校园网直连</label>
+            <input type="radio" name="login-mode" id="mode-webvpn" value="webvpn">
+            <label for="mode-webvpn">🌐 WebVPN</label>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <div>
+      <div class="sec-label">时间</div>
+      <div class="field">
+        <label>开抢时间（留空立即开始）</label>
+        <input type="datetime-local" id="start-time" step="1">
+      </div>
+    </div>
+
+    <div>
+      <div class="sec-label">目标课程</div>
+      <div id="course-list"></div>
+      <button class="btn btn-add" onclick="addCourse()" style="margin-top:10px">＋ 添加课程</button>
+    </div>
+
+    <div class="btn-actions">
+      <button class="btn btn-start" id="btn-start" onclick="startSniper()">开始抢课</button>
+      <button class="btn btn-stop"  id="btn-stop"  onclick="stopSniper()" style="display:none">停止</button>
+    </div>
+
+  </aside>
+
+  <!-- 右：日志 -->
+  <section>
+    <div class="log-hdr">
+      <span class="log-title">实时日志</span>
+      <button class="btn-clr" onclick="clearLog()">清空</button>
+    </div>
+
+    <div id="log-box">
+      <div class="ll">
+        <span class="lt">--:--:--</span>
+        <span class="lv info">INFO</span>
+        <span class="lm">就绪。配置账号和课程后点击「开始抢课」。</span>
+      </div>
+    </div>
+
+    <div id="cap-bar">
+      <span>当前验证码：</span><img id="cap-img" src="" alt="captcha"><span>（已自动识别）</span>
+    </div>
+
+    <div id="status-bar">
+      <span id="status-msg">待机中</span>
+    </div>
+  </section>
+</main>
+
+<!-- 弹窗 -->
+<div id="overlay">
+  <div id="modal">
+    <div class="modal-title">发现多个匹配课程</div>
+    <div class="modal-hint" id="modal-hint">请选择要抢的课程</div>
+    <table class="tbl">
+      <thead><tr><th>#</th><th>课程号</th><th>课序号</th><th>课程名</th><th>教师</th><th>剩余/容量</th></tr></thead>
+      <tbody id="choice-tbody"></tbody>
+    </table>
+    <div class="modal-btns">
+      <button class="btn-confirm" id="btn-confirm" onclick="submitChoice()" disabled>确认选择</button>
+      <button class="btn-skip" onclick="skipChoice()">跳过</button>
+    </div>
+  </div>
+</div>
+
+<script>
+let cardCount=0, running=false, evtSrc=null;
+let idxToCard={}, kcToCard={};
+let selectedRow=null, choiceIdx=null;
+
+// ── 初始化 ────────────────────────────────────────────────────
+addCourse();
+
+// ── 课程卡管理 ────────────────────────────────────────────────
+function addCourse(){
+  cardCount++;
+  const n=cardCount;
+  const div=document.createElement('div');
+  div.className='course-card';
+  div.id=`cc-${n}`;
+  div.innerHTML=`
+    <div class="card-hdr">
+      <span class="card-num" id="num-${n}">COURSE · 01</span>
+      <button class="btn-del" onclick="removeCard(${n})">×</button>
+    </div>
+    <div class="card-fields">
+      <div class="field"><label>课程号 kch</label><input type="text" id="kch-${n}" placeholder="12345678c"></div>
+      <div class="field"><label>课序号 kxh</label><input type="text" id="kxh-${n}" placeholder="01"></div>
+      <div class="field"><label>课程名 kcm</label><input type="text" id="kcm-${n}" placeholder="模糊匹配"></div>
+      <div class="field"><label>教师   skjs</label><input type="text" id="skjs-${n}" placeholder="模糊匹配"></div>
+    </div>`;
+  document.getElementById('course-list').appendChild(div);
+  reindexCards();
+}
+
+function removeCard(n){
+  document.getElementById(`cc-${n}`)?.remove();
+  reindexCards();
+}
+
+// 重新按当前 DOM 顺序给每张卡编号
+function reindexCards(){
+  document.querySelectorAll('.course-card').forEach((c,i)=>{
+    const n=c.id.replace('cc-','');
+    const num=document.getElementById(`num-${n}`);
+    // 只在非运行状态下更新序号文字（运行中显示状态文字）
+    if(num && !c.classList.contains('sniping') &&
+              !c.classList.contains('success') &&
+              !c.classList.contains('failed')){
+      num.textContent=`COURSE · ${String(i+1).padStart(2,'0')}`;
+    }
+  });
+}
+
+function getCourses(){
+  idxToCard={};
+  return Array.from(document.querySelectorAll('.course-card')).map((c,i)=>{
+    const n=parseInt(c.id.replace('cc-',''));
+    idxToCard[i+1]=n;
+    return{
+      kch: (document.getElementById(`kch-${n}`)?.value||'').trim(),
+      kxh: (document.getElementById(`kxh-${n}`)?.value||'').trim(),
+      kcm: (document.getElementById(`kcm-${n}`)?.value||'').trim(),
+      skjs:(document.getElementById(`skjs-${n}`)?.value||'').trim(),
+    };
+  });
+}
+
+// ── 启动 / 停止 ───────────────────────────────────────────────
+async function startSniper(){
+  const username=document.getElementById('username').value.trim();
+  const password=document.getElementById('password').value.trim();
+  const rawTime =document.getElementById('start-time').value;
+  const courses =getCourses();
+  if(!username||!password){alert('请填写学号和密码');return;}
+  if(!courses.length){alert('请至少添加一门课程');return;}
+  const startTime=rawTime?rawTime.replace('T',' ')+(rawTime.length===16?':00':''):'';
+  const useWebvpn=document.getElementById('mode-webvpn').checked;
+  const res=await fetch('/api/start',{method:'POST',
+    headers:{'Content-Type':'application/json'},
+    body:JSON.stringify({username,password,start_time:startTime,
+                         use_webvpn:useWebvpn,courses})});
+  const data=await res.json();
+  if(!data.ok){alert(data.msg);return;}
+  running=true; kcToCard={};
+  document.getElementById('btn-start').style.display='none';
+  document.getElementById('btn-stop').style.display='block';
+  // 启动时卡片进入 sniping 状态，但保留输入框内容不变
+  document.querySelectorAll('.course-card').forEach(c=>{
+    c.className='course-card sniping';
+    const n=c.id.replace('cc-','');
+    const num=document.getElementById(`num-${n}`);
+    if(num) num.textContent='搜索中...';
+  });
+  startSSE();
+}
+
+async function stopSniper(){
+  await fetch('/api/stop',{method:'POST'});
+  running=false; evtSrc?.close(); evtSrc=null;
+  document.getElementById('btn-stop').style.display='none';
+  document.getElementById('btn-start').style.display='block';
+  setStatus('idle','已手动停止');
+  document.querySelectorAll('.course-card.sniping').forEach(c=>{
+    c.className='course-card';
+    const n=c.id.replace('cc-','');
+    const num=document.getElementById(`num-${n}`);
+    if(num) num.textContent=`COURSE · ${String(n).padStart(2,'0')}`;
+  });
+}
+
+// ── SSE ──────────────────────────────────────────────────────
+function startSSE(){
+  evtSrc?.close();
+  evtSrc=new EventSource('/stream');
+  evtSrc.onmessage=e=>handle(JSON.parse(e.data));
+  evtSrc.onerror=()=>{if(!running)evtSrc.close();};
+}
+
+function handle(d){
+  switch(d.type){
+    case 'log':             addLog(d.level,d.text);             break;
+    case 'status':          onStatus(d);                        break;
+    case 'captcha':         showCaptcha(d.image);               break;
+    case 'courses_locked':  onLocked(d.courses);                break;
+    case 'courses_done':    onDone(d.courses);                  break;
+    case 'courses_failed':  onFailed(d.courses);               break;
+    case 'choice_required': showModal(d.course_idx,d.courses);  break;
+  }
+}
+
+// ── 卡片状态 ─────────────────────────────────────────────────
+function setCardState(n, st, label){
+  const card=document.getElementById(`cc-${n}`);
+  const num =document.getElementById(`num-${n}`);
+  if(!card) return;
+  card.className=`course-card ${st}`;
+  if(num) num.textContent=label;
+}
+
+// ── onLocked：回填信息到输入框，卡片标题更新 ─────────────────
+function onLocked(courses){
+  courses.forEach((c,i)=>{
+    const n=idxToCard[i+1];
+    if(!n) return;
+    kcToCard[`${c.kch}_${c.kxh}`]=n;
+    // 回填输入框
+    const s=(id,v)=>{const el=document.getElementById(`${id}-${n}`);if(el&&v)el.value=v;};
+    s('kch',c.kch); s('kxh',c.kxh); s('kcm',c.kcm); s('skjs',(c.skjs||'').trim());
+    // 更新卡片标题，保持 sniping 状态（不改变尺寸）
+    setCardState(n,'sniping',`抢课中 · ${c.kch}_${c.kxh}`);
+  });
+}
+
+// ── onDone：对应卡片变绿，输入框只读 ────────────────────────
+function onDone(courses){
+  courses.forEach(c=>{
+    const n=kcToCard[`${c.kch}_${c.kxh}`];
+    if(!n) return;
+    setCardState(n,'success',`✅ 成功 · ${c.kch}_${c.kxh}`);
+  });
+}
+
+// ── onFailed：对应卡片变红 ───────────────────────────────────
+function onFailed(courses){
+  courses.forEach(c=>{
+    const n=kcToCard[`${c.kch}_${c.kxh}`];
+    if(!n) return;
+    setCardState(n,'failed',`❌ 失败 · ${c.kch}_${c.kxh}`);
+  });
+}
+
+// ── 全局状态 ─────────────────────────────────────────────────
+const dotMap={idle:'',waiting:'waiting',polling:'active',searching:'active',sniping:'active',success:'success',failed:'failed'};
+const txtMap={idle:'待机',waiting:'等待中',polling:'轮询中',searching:'搜索中',sniping:'抢课中',success:'成功',failed:'失败'};
+
+function setStatus(s,msg){
+  document.getElementById('dot').className=`dot ${dotMap[s]||''}`;
+  document.getElementById('hdr-status').textContent=txtMap[s]||s;
+  document.getElementById('status-bar').className=s;
+  document.getElementById('status-msg').textContent=msg||'';
+}
+
+function onStatus(d){
+  setStatus(d.status,d.message);
+  if(['success','failed','idle'].includes(d.status)){
+    running=false;
+    document.getElementById('btn-stop').style.display='none';
+    document.getElementById('btn-start').style.display='block';
+    // 兜底：onDone/onFailed 已精确处理各卡片
+    // 这里只处理还停在 sniping 的卡片（理论上是 blocked 或中断情况）
+    document.querySelectorAll('.course-card.sniping').forEach(c=>{
+      const n=c.id.replace('cc-','');
+      const finalState = d.status==='success' ? 'success' : 'failed';
+      const label      = d.status==='success' ? '✅ 成功' : '❌ 失败';
+      setCardState(n, finalState, label);
+    });
+  }
+}
+
+// ── 验证码 ───────────────────────────────────────────────────
+function showCaptcha(b64){
+  const bar=document.getElementById('cap-bar');
+  bar.style.display='flex';
+  document.getElementById('cap-img').src=`data:image/jpeg;base64,${b64}`;
+  setTimeout(()=>{bar.style.display='none';},5000);
+}
+
+// ── 日志 ─────────────────────────────────────────────────────
+function addLog(level,text){
+  const box=document.getElementById('log-box');
+  const time=new Date().toLocaleTimeString('zh-CN',{hour12:false});
+  const lmap={info:'INFO',warning:'WARN',error:'ERR ',debug:'DBG '};
+  const div=document.createElement('div');
+  div.className='ll';
+  const clean=text.replace(/^\d{4}-\d{2}-\d{2} \d{2}:\d{2}:\d{2},\d{3} \[\w+\] /,'');
+  div.innerHTML=`<span class="lt">${time}</span><span class="lv ${level}">${lmap[level]||level.toUpperCase()}</span><span class="lm">${esc(clean)}</span>`;
+  box.appendChild(div);
+  box.scrollTop=box.scrollHeight;
+}
+function clearLog(){document.getElementById('log-box').innerHTML='';}
+function esc(s=''){return String(s).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;');}
+
+// ── 弹窗 ─────────────────────────────────────────────────────
+function showModal(idx,courses){
+  choiceIdx=idx; selectedRow=null;
+  document.getElementById('modal-hint').textContent=`课程 ${idx} 找到 ${courses.length} 个匹配，请选择`;
+  document.getElementById('btn-confirm').disabled=true;
+  document.getElementById('choice-tbody').innerHTML=courses.map((c,i)=>`
+    <tr class="tr" onclick="pickRow(this,${i+1})">
+      <td>${i+1}</td><td>${esc(c.kch)}</td><td>${esc(c.kxh)}</td>
+      <td>${esc(c.kcm)}</td><td>${esc(c.skjs)}</td><td>${c.bkskyl}/${c.bkskrl}</td>
+    </tr>`).join('');
+  document.getElementById('overlay').classList.add('show');
+}
+function pickRow(tr,n){
+  document.querySelectorAll('.tbl .tr').forEach(r=>r.classList.remove('sel'));
+  tr.classList.add('sel'); selectedRow=n;
+  document.getElementById('btn-confirm').disabled=false;
+}
+async function submitChoice(){
+  if(!selectedRow) return;
+  document.getElementById('overlay').classList.remove('show');
+  await fetch('/api/choose',{method:'POST',headers:{'Content-Type':'application/json'},
+    body:JSON.stringify({course_idx:choiceIdx,choice:selectedRow})});
+}
+async function skipChoice(){
+  document.getElementById('overlay').classList.remove('show');
+  await fetch('/api/choose',{method:'POST',headers:{'Content-Type':'application/json'},
+    body:JSON.stringify({course_idx:choiceIdx,choice:0})});
+}
+
+</script>
+
+</body>
+</html>
+
+
